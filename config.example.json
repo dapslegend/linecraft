@@ -1,0 +1,44 @@
+{
+  "provider": "sporty",
+  "providers": ["sporty", "1xbet"],
+  "window": {
+    "start": "00:00",
+    "end": "09:00",
+    "timezone": "Africa/Lagos"
+  },
+  "sports": ["Football", "Basketball", "Ice Hockey", "American Football", "Tennis"],
+  "pages": {
+    "Football": 2,
+    "Basketball": 1,
+    "Ice Hockey": 1,
+    "American Football": 1,
+    "Tennis": 1
+  },
+  "markets": {
+    "Football": ["18", "1"],
+    "Basketball": ["225", "219"],
+    "Ice Hockey": ["406", "18"],
+    "American Football": ["225", "219"],
+    "Tennis": ["186"]
+  },
+  "odds": {
+    "min": 1.4,
+    "max": 50.0
+  },
+  "hold_max": 0.12,
+  "max_legs": 12,
+  "batch_size": 2,
+  "max_board": 24,
+  "grok": {
+    "enabled": true,
+    "model": "grok-4.7",
+    "timeout_seconds": 240,
+    "require_search": true
+  },
+  "book": {
+    "enabled": true,
+    "mode": "share",
+    "stake": false
+  },
+  "output_dir": "out"
+}

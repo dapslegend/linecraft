@@ -1,6 +1,6 @@
 # Linecraft
 
-Backend-only public price analysis. Do not add wagering, share-code booking, account storage, or secrets.
+Backend-only. Share-code booking is allowed. Staking, account storage, and secrets are not.
 
 - Keep the HTTP server on the stdlib and loopback by default.
 - A market must be a complete mutually exclusive set before de-vig.

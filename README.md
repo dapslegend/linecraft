@@ -1,8 +1,10 @@
 # Linecraft
 
-Public sports price analysis. Backend only.
+Public sports price analysis and share-only booking. Backend only.
 
-Linecraft reads a complete market of decimal odds and returns de-vigged probabilities, hold, and margin. It does not place wagers, create betting slips, store accounts, or talk to a sportsbook.
+Linecraft reads a complete market of decimal odds and returns de-vigged probabilities, hold, and margin. It can also pull a configured sportsbook feed, ask Grok to research the board, and post a share code.
+
+It does not stake. It does not store accounts. It does not put secrets in the repo.
 
 Frontend deployment is intentionally not in this repository yet.
 
@@ -22,6 +24,21 @@ curl -s -X POST http://127.0.0.1:8787/v1/markets/analyse \
 ```
 
 `method` may be `shin` (default) or `proportional`.
+
+## Book a share
+
+Copy `.env.example` to `.env` and set `GROK_API_KEY`. Copy `config.example.json` if you want a local config. Default provider is Sporty. Grok research is on. Booking posts a share code only.
+
+```bash
+set -a && source .env && set +a
+PYTHONPATH=src python3 -m linecraft --config config.example.json --pull-only
+PYTHONPATH=src python3 -m linecraft --config config.example.json --no-book
+PYTHONPATH=src python3 -m linecraft --config config.example.json
+```
+
+`provider` may be `sporty`, `1xbet`, or `generic`. Sports, pages, markets, and the time window come from config. A 1xBet or generic feed is pulled, but a share is refused unless that book has a share-only URL. There is no stake field.
+
+A researched keep is not booked unless it still matches a live grid outcome id. One miss kills a full accumulator. A share code is not a sure thing and is not 80%.
 
 ## Test
 
@@ -43,4 +60,4 @@ Hold is `1 - 1/overround`. Margin is `overround - 1`.
 
 ## What this is not
 
-No stake placement. No share codes. No user data. No secrets in the repo.
+No stake placement. No user data. No secrets in the repo. A share code is a booking link, not a wager.

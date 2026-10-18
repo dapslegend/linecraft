@@ -1,6 +1,7 @@
 """Stdlib HTTP API for Linecraft price analysis.
 
-Bind is localhost by default. There is no stake, share, or account endpoint.
+Bind is localhost by default. There is no stake endpoint. Share booking is a
+CLI path and is refused here so a request cannot move money.
 """
 
 from __future__ import annotations
@@ -24,7 +25,8 @@ def health() -> dict[str, Any]:
         "service": "linecraft",
         "version": __version__,
         "status": "ok",
-        "scope": "price-analysis-only",
+        "scope": "price-analysis-and-share-only",
+        "stake": False,
     }
 
 

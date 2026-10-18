@@ -1,3 +1,3 @@
-"""Linecraft public price analysis. Analysis only; never places a wager."""
+"""Linecraft price analysis and share-only booking. Never places a stake."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
