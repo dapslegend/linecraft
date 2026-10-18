@@ -28,10 +28,16 @@ LOW_SCORE_RE = re.compile(
     r"good defen[cs]|weak attack|bad attack|striker (out|injured|suspended))",
     re.I,
 )
-OVER_CONFIDENT_RE = re.compile(
-    r"(over \d|high[- ]scor|scored \d|\d-\d|gpg|goals per game|leaky|conceded \d)",
-    re.I,
-)
+def _rates(text: str) -> list[float]:
+    blob = text or ""
+    rates = [float(m) for m in re.findall(r"(\d+\.\d+|\d+)\s*(?:gpg|goals? per game|ppg|points per game)", blob, re.I)]
+    rates += [float(m) for m in re.findall(r"(?:average|avg|averaging)\s*(\d+\.\d+|\d+)", blob, re.I)]
+    return rates
+
+
+def _line_from(text: str):
+    found = re.search(r"\b(?:over|under)\s*(\d+\.5)\b", text or "", re.I)
+    return float(found.group(1)) if found else None
 
 
 class GrokError(RuntimeError):
@@ -94,6 +100,22 @@ def under_is_strict(text: str) -> bool:
     return bool(BOTH_TEAMS_RE.search(blob) and LOW_SCORE_RE.search(blob))
 
 
+def over_is_strict(text: str, selection: str = "") -> bool:
+    """Over only if both teams' sourced rates clear that line."""
+    blob = f"{selection} {text}".strip()
+    if len(blob) < 40 or not FACT_RE.search(blob):
+        return False
+    if re.search(r"\b(not confirmed|not checked|unconfirmed|unknown|no data)\b", blob, re.I):
+        return False
+    line = _line_from(blob)
+    rates = _rates(blob)
+    if line is not None and len(rates) >= 2 and (rates[0] + rates[1] > line or min(rates[0], rates[1]) >= line / 2):
+        return True
+    if line is not None and len(rates) == 1 and rates[0] > line and BOTH_TEAMS_RE.search(blob):
+        return True
+    return False
+
+
 def think(fixtures: list[dict[str, Any]], config: dict[str, Any]) -> list[dict[str, Any]]:
     """Ask Grok to keep or drop each fixture. No search or no fact means drop."""
     settings = grok_settings(config)
@@ -109,7 +131,9 @@ def think(fixtures: list[dict[str, Any]], config: dict[str, Any]) -> list[dict[s
         "Do not invent a stat. If you cannot source a concrete fact, selection must be null. "
         "Pick at most one outcome copied from that match grid. "
         "UNDER is banned unless both teams are confirmed very low scoring, well defended, or weak in attack. "
-        "One team is not enough. If that cannot be sourced, return null, or copy Over only if the Over fact is confident. "
+        "OVER is the same standard in reverse. Over 2.5 needs both teams at a combined rate above 2.5, "
+        "or each team around 1.5 goals per game. One high-scoring team or a head-to-head note is not enough. "
+        "If neither test is sourced, selection must be null. "
         "Never say sure, lock, 80%, or 100. This is research for a share code, not a stake. "
         'Final message is JSON only: {"picks":[{"eventId":"","selection":null,"marketId":"","outcomeId":"","specifier":"","odds":null,'
         '"fact":"one sourced fact with a number, injury, or lineup"}]}'
@@ -170,7 +194,7 @@ def think(fixtures: list[dict[str, Any]], config: dict[str, Any]) -> list[dict[s
         side = side_of(str(row.get("selection") or ""))
         if side == "under" and not under_is_strict(fact):
             continue
-        if side == "over" and not OVER_CONFIDENT_RE.search(fact):
+        if side == "over" and not over_is_strict(fact, str(row.get("selection") or "")):
             continue
         kept.append(
             {

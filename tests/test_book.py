@@ -6,7 +6,7 @@ from linecraft.book import BookError, assert_share_only, share_sporty
 from linecraft.config import load_config
 from linecraft.feeds import pull_games
 from linecraft.__main__ import selections_from_keeps
-from linecraft.grok import under_is_strict
+from linecraft.grok import over_is_strict, under_is_strict
 
 
 class BookTests(unittest.TestCase):
@@ -103,6 +103,16 @@ class BookTests(unittest.TestCase):
         self.assertTrue(under_is_strict(
             "Both teams are very low scoring. Home scored only 1 in last 5 and away failed to score in 3."
         ))
+
+    def test_over_needs_both_teams_above_the_line(self) -> None:
+        h2h = "Diriangen scored 37 goals in 9 meetings with Rancho Santana, 4.11 per game, and 8 of 9 finished over 2.5."
+        self.assertFalse(over_is_strict(h2h, "Over 2.5"))
+        one_side = "Home average 2.4 goals per game. Away was not confirmed."
+        self.assertFalse(over_is_strict(one_side, "Over 2.5"))
+        both = "Home average 1.8 goals per game and away average 1.6 goals per game this season."
+        self.assertTrue(over_is_strict(both, "Over 2.5"))
+        short = "Home average 1.1 goals per game and away average 1.0 goals per game."
+        self.assertFalse(over_is_strict(short, "Over 2.5"))
 
 
 if __name__ == "__main__":
