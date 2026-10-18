@@ -1,6 +1,6 @@
 [project]
 name = "linecraft"
-version = "0.2.0"
+version = "0.3.0"
 description = "Public sports price analysis and share-only booking. No staking."
 readme = "README.md"
 requires-python = ">=3.11"

@@ -12,13 +12,82 @@ from linecraft.feeds import FeedError, pull_games
 from linecraft.grok import GrokError, think
 
 
-def selections_from_keeps(keeps: list[dict]) -> list[dict]:
-    """A share needs a grid outcome id. Research text alone is not enough."""
-    ready = []
-    for row in keeps:
-        if not row.get("eventId") or not row.get("outcomeId") or not row.get("marketId"):
+def _side(desc: str) -> str:
+    text = (desc or "").strip().lower()
+    for token in ("over", "under", "home", "away", "draw"):
+        if text == token or text.startswith(token + " "):
+            return token
+    return text
+
+
+def _line(spec: str):
+    try:
+        return float(str(spec).split("=", 1)[1])
+    except (IndexError, ValueError):
+        return None
+
+
+def match_keep(keep: dict, fixture: dict) -> dict | None:
+    """Copy the live grid outcome. A text pick with no outcome id is not booked."""
+    want = _side(str(keep.get("selection") or ""))
+    if not want:
+        return None
+    want_line = _line(str(keep.get("specifier") or ""))
+    if want_line is None:
+        found = __import__("re").search(r"(\d+\.5)", str(keep.get("selection") or ""))
+        want_line = float(found.group(1)) if found else None
+    for market in fixture.get("markets") or []:
+        if not isinstance(market, dict):
             continue
-        ready.append(row)
+        mid = str(market.get("id") or market.get("marketId") or fixture.get("marketId") or "")
+        spec = str(market.get("specifier") or "")
+        line = _line(spec)
+        if want_line is not None and line is not None and abs(line - want_line) > 0.01:
+            continue
+        for outcome in market.get("outcomes") or []:
+            if not isinstance(outcome, dict):
+                continue
+            if _side(str(outcome.get("desc") or outcome.get("name") or "")) != want:
+                continue
+            oid = outcome.get("id") or outcome.get("outcomeId")
+            if not oid or not mid:
+                continue
+            try:
+                odds = float(outcome.get("odds"))
+            except (TypeError, ValueError):
+                continue
+            return {
+                "eventId": fixture.get("eventId"),
+                "marketId": mid,
+                "specifier": spec,
+                "outcomeId": str(oid),
+                "odds": f"{odds:.2f}",
+            }
+    if keep.get("eventId") and keep.get("outcomeId") and keep.get("marketId") and keep.get("odds"):
+        return {
+            "eventId": keep["eventId"],
+            "marketId": str(keep["marketId"]),
+            "specifier": str(keep.get("specifier") or ""),
+            "outcomeId": str(keep["outcomeId"]),
+            "odds": f"{float(keep['odds']):.2f}",
+        }
+    return None
+
+
+def selections_from_keeps(keeps: list[dict], fixtures: list[dict] | None = None) -> list[dict]:
+    """A share needs a grid outcome id. Research text alone is not enough."""
+    by_id = {str(row.get("eventId")): row for row in (fixtures or []) if row.get("eventId")}
+    ready = []
+    seen = set()
+    for row in keeps:
+        event_id = str(row.get("eventId") or "")
+        if not event_id or event_id in seen:
+            continue
+        matched = match_keep(row, by_id.get(event_id) or {"eventId": event_id, "markets": []})
+        if matched is None:
+            continue
+        seen.add(event_id)
+        ready.append(matched)
     return ready
 
 
@@ -50,7 +119,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"GROK_FAIL {exc}", file=sys.stderr)
         return 4
     print(f"KEEPS {len(keeps)}", flush=True)
-    ready = selections_from_keeps(keeps)
+    cap = int(config.get("max_legs") or 50)
+    ready = selections_from_keeps(keeps, board)[:cap]
     if args.no_book or not ready:
         print(json.dumps({"keeps": keeps, "booked": False, "stake": False}, indent=2))
         return 0
@@ -60,14 +130,16 @@ def main(argv: list[str] | None = None) -> int:
         print(f"BOOK_FAIL {exc}", file=sys.stderr)
         return 5
     code = ((result.get("data") or {}).get("shareCode") or result.get("shareCode"))
+    ok = str(result.get("bizCode")) == "10000" and bool(code)
     print(json.dumps({
-        "shareCode": code,
+        "shareCode": code if ok else None,
         "bizCode": result.get("bizCode"),
+        "message": result.get("message"),
         "n": len(ready),
         "stake": False,
         "notSure": True,
     }, indent=2))
-    return 0 if code else 5
+    return 0 if ok else 5
 
 
 if __name__ == "__main__":

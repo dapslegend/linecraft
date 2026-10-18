@@ -50,6 +50,8 @@ def share_sporty(selections: list[dict[str, Any]]) -> dict[str, Any]:
     }
     if any("stake" in row for row in body["selections"]):
         raise BookError("selection payload must not contain a stake")
+    if any(not isinstance(row["odds"], str) for row in body["selections"]):
+        raise BookError("share odds must be strings")
     req = urllib.request.Request(
         url,
         data=json.dumps(body).encode(),

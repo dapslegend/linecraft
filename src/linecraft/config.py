@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CONFIG: dict[str, Any] = {
     "provider": "sporty",
     "providers": ["sporty", "1xbet"],
-    "window": {"start": "00:00", "end": "09:00", "timezone": "Africa/Lagos"},
+    "window": {"start": "01:00", "end": "24:00", "timezone": "Africa/Lagos"},
     "sports": ["Football", "Basketball", "Ice Hockey", "American Football", "Tennis"],
     "pages": {"Football": 2, "Basketball": 1, "Ice Hockey": 1, "American Football": 1, "Tennis": 1},
     "markets": {
@@ -24,9 +24,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "odds": {"min": 1.4, "max": 50.0},
     "hold_max": 0.12,
-    "max_legs": 12,
+    "max_legs": 50,
     "batch_size": 2,
-    "max_board": 24,
+    "max_board": 80,
     "grok": {
         "enabled": True,
         "model": "grok-4.7",

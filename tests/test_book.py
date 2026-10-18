@@ -6,6 +6,7 @@ from linecraft.book import BookError, assert_share_only, share_sporty
 from linecraft.config import load_config
 from linecraft.feeds import pull_games
 from linecraft.__main__ import selections_from_keeps
+from linecraft.grok import under_is_strict
 
 
 class BookTests(unittest.TestCase):
@@ -71,6 +72,37 @@ class BookTests(unittest.TestCase):
     def test_assert_share_only_rejects_bet_mode(self) -> None:
         with self.assertRaises(BookError):
             assert_share_only({"book": {"enabled": True, "mode": "bet", "stake": False}})
+
+    def test_default_window_is_1am_to_midnight_and_cap_50(self) -> None:
+        config = load_config(None)
+        self.assertEqual(config["window"]["start"], "01:00")
+        self.assertEqual(config["window"]["end"], "24:00")
+        self.assertEqual(config["max_legs"], 50)
+
+    def test_text_pick_matches_live_grid_outcome(self) -> None:
+        ready = selections_from_keeps(
+            [{"eventId": "sr:match:9", "selection": "Over 2.5", "fact": "x" * 50}],
+            [{
+                "eventId": "sr:match:9",
+                "markets": [{
+                    "id": "18",
+                    "specifier": "total=2.5",
+                    "outcomes": [
+                        {"id": "12", "desc": "Over", "odds": "1.91"},
+                        {"id": "13", "desc": "Under", "odds": "1.91"},
+                    ],
+                }],
+            }],
+        )
+        self.assertEqual(ready[0]["outcomeId"], "12")
+        self.assertEqual(ready[0]["odds"], "1.91")
+        self.assertIsInstance(ready[0]["odds"], str)
+
+    def test_under_without_both_teams_is_rejected(self) -> None:
+        self.assertFalse(under_is_strict("Home scored only 1 in last 5. Away was not confirmed."))
+        self.assertTrue(under_is_strict(
+            "Both teams are very low scoring. Home scored only 1 in last 5 and away failed to score in 3."
+        ))
 
 
 if __name__ == "__main__":
