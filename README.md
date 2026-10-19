@@ -38,7 +38,7 @@ PYTHONPATH=src python3 -m linecraft --config config.example.json
 
 `provider` may be `sporty`, `1xbet`, or `generic`. Sports, pages, markets, and the time window come from config. A 1xBet or generic feed is pulled, but a share is refused unless that book has a share-only URL. There is no stake field.
 
-A researched keep is not booked unless it still matches a live grid outcome id. Share odds are always strings. An Under is dropped unless both teams are confirmed low scoring, well defended, or weak in attack. An Over is dropped unless both teams' sourced scoring rates clear that line. The default window is 01:00 to midnight in Africa/Lagos, and the share cap is 50 so the slip can be shuffled by hand. One miss kills a full accumulator. A share code is not a sure thing and is not 80%.
+A researched keep is not booked unless it still matches a live grid outcome id. Share odds are always strings. An Under is dropped unless both teams are confirmed low scoring, well defended, or weak in attack. An Over is dropped unless both teams' sourced scoring rates clear that line. A football Home or Away is dropped unless that side's expected goals are at least twice the other side. A ratio inside 1.43 is Draw or a skip. The default window is 01:00 to midnight in Africa/Lagos, and the share cap is 50 so the slip can be shuffled by hand. One miss kills a full accumulator. A share code is not a sure thing and is not 80%.
 
 ## Test
 

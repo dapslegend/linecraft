@@ -100,6 +100,59 @@ def under_is_strict(text: str) -> bool:
     return bool(BOTH_TEAMS_RE.search(blob) and LOW_SCORE_RE.search(blob))
 
 
+XG_BAND = 1.43
+
+
+def _xg_pair(text: str):
+    blob = text or ""
+    home = away = None
+
+    def _take(label, value):
+        nonlocal home, away
+        if label == "home" and home is None:
+            home = value
+        elif label == "away" and away is None:
+            away = value
+
+    for match in re.finditer(
+        r"\b(home|hosts?|away|visitors|guests)\b[^.]{0,80}?"
+        r"(\d+\.\d+|\d+)\s*(?:gpg|goals? per game|xg|expected goals)",
+        blob,
+        re.I,
+    ):
+        label = "home" if match.group(1).lower().startswith("h") else "away"
+        _take(label, float(match.group(2)))
+    for match in re.finditer(
+        r"\b(home|hosts?|away|visitors|guests)\b[^.]{0,40}?"
+        r"(?:average|avg|averaging|xg)\s*(\d+\.\d+|\d+)",
+        blob,
+        re.I,
+    ):
+        label = "home" if match.group(1).lower().startswith("h") else "away"
+        _take(label, float(match.group(2)))
+    if home is None or away is None or min(home, away) <= 0:
+        return None
+    return home, away
+
+
+def result_call(text: str, selection: str):
+    """Home/Away only at a 2x expected-goals gap. A 1.43 band is draw or skip."""
+    side = side_of(selection)
+    if side not in {"home", "away", "draw"}:
+        return side
+    pair = _xg_pair(text)
+    if pair is None:
+        return "skip"
+    home_xg, away_xg = pair
+    if away_xg >= 2 * home_xg:
+        return "away"
+    if home_xg >= 2 * away_xg:
+        return "home"
+    if max(home_xg, away_xg) / min(home_xg, away_xg) <= XG_BAND:
+        return "draw" if side == "draw" else "skip"
+    return "skip"
+
+
 def over_is_strict(text: str, selection: str = "") -> bool:
     """Over only if both teams' sourced rates clear that line."""
     blob = f"{selection} {text}".strip()
@@ -134,6 +187,9 @@ def think(fixtures: list[dict[str, Any]], config: dict[str, Any]) -> list[dict[s
         "OVER is the same standard in reverse. Over 2.5 needs both teams at a combined rate above 2.5, "
         "or each team around 1.5 goals per game. One high-scoring team or a head-to-head note is not enough. "
         "If neither test is sourced, selection must be null. "
+        "For football Home, Draw, or Away, write home xG and away xG. "
+        "Away only if away xG is at least twice home xG. Home only if home xG is at least twice away xG. "
+        "A ratio inside 1.43 is Draw or null. Home advantage is not a substitute. "
         "Never say sure, lock, 80%, or 100. This is research for a share code, not a stake. "
         'Final message is JSON only: {"picks":[{"eventId":"","selection":null,"marketId":"","outcomeId":"","specifier":"","odds":null,'
         '"fact":"one sourced fact with a number, injury, or lineup"}]}'
@@ -196,6 +252,10 @@ def think(fixtures: list[dict[str, Any]], config: dict[str, Any]) -> list[dict[s
             continue
         if side == "over" and not over_is_strict(fact, str(row.get("selection") or "")):
             continue
+        if side in {"home", "away", "draw"}:
+            call = result_call(fact, side)
+            if call == "skip" or call != side:
+                continue
         kept.append(
             {
                 "eventId": str(row.get("eventId") or ""),
