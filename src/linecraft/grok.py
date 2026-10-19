@@ -83,12 +83,84 @@ def output_text(body: dict[str, Any]) -> str:
     return "\n".join(chunks) or str(body.get("output_text") or "")
 
 
+IMPORTANCE_RE = re.compile(
+    r"\b(importance|stakes|must[- ]win|title race|relegation|play[- ]?off|"
+    r"cup final|semi[- ]?final|quarter[- ]?final|derby|dead rubber|nothing to play for|"
+    r"already qualified|already relegated|mid[- ]?table|top \d|bottom \d|"
+    r"\d+(?:st|nd|rd|th)\b|points from|points gap|six[- ]pointer|promotion)\b",
+    re.I,
+)
+LOW_IMPORTANCE_RE = re.compile(
+    r"\b(friendly|dead rubber|nothing to play for|already relegated|"
+    r"already qualified|meaningless|low stakes|no stakes|reserve friendly)\b",
+    re.I,
+)
+DRAW_SIDES = {"draw", "home or draw", "draw or away", "home or away"}
+
+
 def side_of(desc: str) -> str:
-    text = (desc or "").strip().lower()
-    for token in ("over", "under", "home", "away", "draw"):
+    text = (desc or "").strip().lower().replace("/", " or ")
+    text = re.sub(r"\s+", " ", text)
+    for token in (
+        "home or draw", "draw or home", "1x",
+        "draw or away", "away or draw", "x2",
+        "home or away", "away or home", "12",
+        "over", "under", "home", "away", "draw",
+    ):
         if text == token or text.startswith(token + " "):
+            if token in {"draw or home", "1x"}:
+                return "home or draw"
+            if token in {"away or draw", "x2"}:
+                return "draw or away"
+            if token in {"away or home", "12"}:
+                return "home or away"
             return token
     return text
+
+
+def importance_ok(text: str) -> bool:
+    """A keep needs a sourced stake. A dead rubber or a friendly is not enough."""
+    blob = text or ""
+    if LOW_IMPORTANCE_RE.search(blob):
+        return False
+    return bool(IMPORTANCE_RE.search(blob))
+
+
+def _draw_counts(text: str):
+    """Return (home_draws, away_draws) from the last five, only when both are sourced."""
+    blob = text or ""
+    home = away = None
+
+    def _take(label, value):
+        nonlocal home, away
+        if label == "home" and home is None:
+            home = value
+        elif label == "away" and away is None:
+            away = value
+
+    patterns = (
+        r"\b(home|hosts?|away|visitors|guests)\b[^.]{0,50}?(\d+)\s+draws?\s+in\s+(?:the\s+)?(?:last|past)\s+5",
+        r"\b(home|hosts?|away|visitors|guests)\b[^.]{0,50}?(?:last|past)\s+5[^.]{0,40}?(\d+)\s+draws?",
+        r"\b(home|hosts?|away|visitors|guests)\b[^.]{0,30}?(?:drew|drawn)\s+(\d+)\s+of\s+(?:the\s+)?(?:last|past)\s+5",
+    )
+    for pattern in patterns:
+        for match in re.finditer(pattern, blob, re.I):
+            label = "home" if match.group(1).lower().startswith("h") else "away"
+            _take(label, int(match.group(2)))
+    if home is None or away is None:
+        return None
+    if not (0 <= home <= 5 and 0 <= away <= 5):
+        return None
+    return home, away
+
+
+def draw_form_ok(text: str) -> bool:
+    """A draw-related pick needs both teams' last-five draw counts. xG is not enough."""
+    counts = _draw_counts(text)
+    if counts is None:
+        return False
+    home_draws, away_draws = counts
+    return home_draws >= 2 and away_draws >= 2
 
 
 def under_is_strict(text: str) -> bool:
@@ -136,21 +208,13 @@ def _xg_pair(text: str):
 
 
 def result_call(text: str, selection: str):
-    """Home/Away only at a 2x expected-goals gap. A 1.43 band is draw or skip."""
+    """Grok decides the side. A draw still needs last-five draw counts, not xG."""
     side = side_of(selection)
-    if side not in {"home", "away", "draw"}:
+    if side not in {"home", "away", *DRAW_SIDES}:
         return side
-    pair = _xg_pair(text)
-    if pair is None:
+    if side in DRAW_SIDES and not draw_form_ok(text):
         return "skip"
-    home_xg, away_xg = pair
-    if away_xg >= 2 * home_xg:
-        return "away"
-    if home_xg >= 2 * away_xg:
-        return "home"
-    if max(home_xg, away_xg) / min(home_xg, away_xg) <= XG_BAND:
-        return "draw" if side == "draw" else "skip"
-    return "skip"
+    return side
 
 
 def over_is_strict(text: str, selection: str = "") -> bool:
@@ -187,9 +251,15 @@ def think(fixtures: list[dict[str, Any]], config: dict[str, Any]) -> list[dict[s
         "OVER is the same standard in reverse. Over 2.5 needs both teams at a combined rate above 2.5, "
         "or each team around 1.5 goals per game. One high-scoring team or a head-to-head note is not enough. "
         "If neither test is sourced, selection must be null. "
-        "For football Home, Draw, or Away, write home xG and away xG. "
-        "Away only if away xG is at least twice home xG. Home only if home xG is at least twice away xG. "
-        "A ratio inside 1.43 is Draw or null. Home advantage is not a substitute. "
+        "You decide Home, Away, Draw, or double chance. Expected goals are context, not the decision. "
+        "Before any Draw, Home or Draw, Draw or Away, or Home or Away, search the last five finished games for each team. "
+        "Write both counts as 'home N draws in last 5' and 'away N draws in last 5'. "
+        "A draw-related pick is allowed only if both teams have at least 2 draws in those five. "
+        "If either count is missing, or either team has fewer than 2 draws in 5, do not pick Draw or double chance. "
+        "Home or Away is a draw-fade. It still needs both last-five draw counts at 2 or more. "
+        "A straight Home or Away does not need the draw count. It needs a sourced reason that is not only xG. "
+        "Before any keep, write the stake: table place, points gap, relegation, promotion, playoff, cup round, title race, or must-win. "
+        "A friendly, a dead rubber, or a match whose stake you cannot source must be null. League name alone is not importance. "
         "Never say sure, lock, 80%, or 100. This is research for a share code, not a stake. "
         'Final message is JSON only: {"picks":[{"eventId":"","selection":null,"marketId":"","outcomeId":"","specifier":"","odds":null,'
         '"fact":"one sourced fact with a number, injury, or lineup"}]}'
@@ -247,12 +317,14 @@ def think(fixtures: list[dict[str, Any]], config: dict[str, Any]) -> list[dict[s
         fact = str(row.get("fact") or "")
         if len(fact) < 40 or not FACT_RE.search(fact):
             continue
+        if not importance_ok(fact):
+            continue
         side = side_of(str(row.get("selection") or ""))
         if side == "under" and not under_is_strict(fact):
             continue
         if side == "over" and not over_is_strict(fact, str(row.get("selection") or "")):
             continue
-        if side in {"home", "away", "draw"}:
+        if side in {"home", "away", *DRAW_SIDES}:
             call = result_call(fact, side)
             if call == "skip" or call != side:
                 continue

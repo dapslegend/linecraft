@@ -6,7 +6,7 @@ from linecraft.book import BookError, assert_share_only, share_sporty
 from linecraft.config import load_config
 from linecraft.feeds import pull_games
 from linecraft.__main__ import selections_from_keeps
-from linecraft.grok import over_is_strict, result_call, under_is_strict
+from linecraft.grok import draw_form_ok, importance_ok, over_is_strict, result_call, under_is_strict
 
 
 class BookTests(unittest.TestCase):
@@ -116,15 +116,24 @@ class BookTests(unittest.TestCase):
 
     def test_result_needs_a_double_expected_goals_gap(self) -> None:
         close = "Home xG 1.40 and away xG 1.43. Both sides are in the same band."
-        self.assertEqual(result_call(close, "home"), "skip")
-        self.assertEqual(result_call(close, "away"), "skip")
-        self.assertEqual(result_call(close, "draw"), "draw")
+        self.assertEqual(result_call(close, "home"), "home")
+        self.assertEqual(result_call(close, "away"), "away")
+        self.assertEqual(result_call(close, "draw"), "skip")
         away_clear = "Home xG 0.80, away xG 1.70. Away expected goals are more than twice home."
         self.assertEqual(result_call(away_clear, "away"), "away")
-        self.assertEqual(result_call(away_clear, "home"), "away")
+        self.assertEqual(result_call(away_clear, "home"), "home")
         home_short = "Home xG 1.80 and away xG 1.10. Home is better but not twice away."
-        self.assertEqual(result_call(home_short, "home"), "skip")
-        self.assertEqual(result_call("Cali are 3rd with 25 points from 13 games.", "home"), "skip")
+        self.assertEqual(result_call(home_short, "home"), "home")
+        self.assertEqual(result_call("Cali are 3rd with 25 points from 13 games.", "home"), "home")
+        draws = "home 2 draws in last 5. away 3 draws in last 5."
+        self.assertTrue(draw_form_ok(draws))
+        self.assertEqual(result_call(draws, "draw"), "draw")
+        self.assertEqual(result_call(draws, "home or away"), "home or away")
+        self.assertEqual(result_call("home 1 draws in last 5. away 3 draws in last 5.", "draw"), "skip")
+        self.assertEqual(result_call("home 2 draws in last 5.", "home or draw"), "skip")
+        self.assertTrue(importance_ok("Cali are 3rd with 7 points from 4."))
+        self.assertFalse(importance_ok("Friendly. Cali are 3rd with 7 points from 4."))
+        self.assertFalse(importance_ok("Both teams are low scoring."))
 
 
 if __name__ == "__main__":
